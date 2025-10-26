@@ -7,7 +7,7 @@
 - **Languages:** Go, TypeScript, Basic C  
 - **Specialties:** Backend development, POSIX/Linux systems programming, concurrent CLI tools  
 - **Frameworks & Stacks:** React, Solid.js, custom Go+React SSR stack (NodeJS-free in production)  
-- **Tooling:** Arch Linux, Neovim, Git, AWS (S3, SES, SQS), SQLite  
+- **Tooling:** Linux, Neovim, Git, AWS (S3, SES, SQS), Postgres, SQLite  
 - **Philosophy:** *Simplicity > Complexity • Performance > Convenience • Build > Buy*
 
 ## 📫 Contact  
