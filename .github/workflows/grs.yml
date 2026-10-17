@@ -42,9 +42,9 @@ jobs:
       - name: Download SVG cards from git.jelius.dev
         run: |
           mkdir -p profile
-          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/overview.svg" \
+          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/overview.svg#gh-dark-mode-only" \
             -o profile/stats.svg
-          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/languages.svg" \
+          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/languages.svg#gh-dark-mode-only" \
             -o profile/top-langs.svg
 
       - name: Commit cards
