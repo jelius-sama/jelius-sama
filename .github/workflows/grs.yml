@@ -1,8 +1,5 @@
 name: Update README cards
 
-# ![GitHub Stats](https://github-readme-stats.vercel.app/api?username=jelius-sama&show_icons=true&hide_border=true&theme=tokyonight)
-# ![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=jelius-sama&layout=compact&hide_border=true&theme=tokyonight)
-
 on:
   schedule:
     - cron: "0 0 * * *" # Runs once daily at midnight
@@ -18,29 +15,37 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Generate stats card
-        uses: stats-organization/github-readme-stats-action@v2
-        with:
-          card: stats
-          options: username=${{ github.repository_owner }}&show_icons=true&hide_border=true&theme=catppuccin_mocha
-          path: profile/stats.svg
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enable IPv6 via wgcf and WireGuard
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wireguard-tools dnsutils jq
 
-      - name: Generate top languages card
-        uses: stats-organization/github-readme-stats-action@v2
-        with:
-          card: top-langs
-          options: username=${{ github.repository_owner }}&layout=compact&hide_border=true&theme=catppuccin_mocha
-          path: profile/top-langs.svg
-          token: ${{ secrets.GITHUB_TOKEN }}
+          WGCF_URL=$(curl -s https://api.github.com/repos/ViRb3/wgcf/releases/latest \
+            | jq -r '.assets[] | select(.name | test("linux_amd64$")) | .browser_download_url')
+          sudo curl -fsSL "$WGCF_URL" -o /usr/local/bin/wgcf
+          sudo chmod +x /usr/local/bin/wgcf
 
-      - name: Generate pin card
-        uses: stats-organization/github-readme-stats-action@v2
-        with:
-          card: pin
-          options: username=stats-organization&repo=github-readme-stats
-          path: profile/pin-stats-organization-github-readme-stats.svg
-          token: ${{ secrets.GITHUB_TOKEN }}
+          wgcf register --accept-tos
+          wgcf generate
+
+          ENDPOINT_IP=$(dig +short engage.cloudflareclient.com A | head -n 1)
+          sed -i "s/engage.cloudflareclient.com/${ENDPOINT_IP}/g" wgcf-profile.conf
+          sed -i '/^DNS =/d' wgcf-profile.conf
+          sed -i 's/AllowedIPs = 0.0.0.0\/0, ::\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
+          sed -i 's/AllowedIPs = 0.0.0.0\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
+
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
+          sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
+          sudo wg-quick up wgcf
+
+      - name: Download SVG cards from git.jelius.dev
+        run: |
+          mkdir -p profile
+          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/overview.svg" \
+            -o profile/stats.svg
+          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/languages.svg" \
+            -o profile/top-langs.svg
 
       - name: Commit cards
         run: |
