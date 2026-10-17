@@ -8,9 +8,9 @@ jobs:
     steps:
       - name: Enable IPv6 via wgcf and WireGuard
         run: |
-          # 1. Install WireGuard tools and DNS utilities
+          # 1. Install WireGuard tools (without openresolv)
           sudo apt-get update
-          sudo apt-get install -y wireguard-tools openresolv dnsutils jq
+          sudo apt-get install -y wireguard-tools dnsutils jq
 
           # 2. Download the latest wgcf binary
           WGCF_URL=$(curl -s https://api.github.com/repos/ViRb3/wgcf/releases/latest \
@@ -22,12 +22,15 @@ jobs:
           wgcf register --accept-tos
           wgcf generate
 
-          # 4. Modify wgcf-profile.conf for safe IPv6-only routing
-          # Resolve engage.cloudflareclient.com to an IPv4 address to prevent routing loops
+          # 4. Patch wgcf-profile.conf for Ubuntu 22.04/24.04 runners
+          # Resolve engage.cloudflareclient.com to an IPv4 address
           ENDPOINT_IP=$(dig +short engage.cloudflareclient.com A | head -n 1)
           sed -i "s/engage.cloudflareclient.com/${ENDPOINT_IP}/g" wgcf-profile.conf
 
-          # Route ONLY IPv6 traffic through WARP so GitHub Runner IPv4 stays intact
+          # Remove the DNS line so wg-quick doesn't look for resolvconf/openresolv
+          sed -i '/^DNS =/d' wgcf-profile.conf
+
+          # Route ONLY IPv6 traffic through WARP
           sed -i 's/AllowedIPs = 0.0.0.0\/0, ::\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
           sed -i 's/AllowedIPs = 0.0.0.0\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
 
