@@ -2,7 +2,7 @@ name: Update README cards
 
 on:
   schedule:
-    - cron: "23 3 * * *" # Off-peak schedule
+    - cron: "23 3 * * *"
   workflow_dispatch:
 
 jobs:
@@ -27,23 +27,25 @@ jobs:
           sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
           sudo ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o wgcf -j TCPMSS --clamp-mss-to-pmtu
 
-          # Write the secret config (and apply defensive sed patches just in case)
+          # Write the secret config
           sudo mkdir -p /etc/wireguard
           echo "$WGCF_CONF" \
             | sed '/^DNS =/d' \
             | sed 's/AllowedIPs = 0.0.0.0\/0, ::\/0/AllowedIPs = ::\/0/g' \
+            | sed 's/AllowedIPs = 0.0.0.0\/0/AllowedIPs = ::\/0/g' \
             | sudo tee /etc/wireguard/wgcf.conf > /dev/null
           sudo chmod 600 /etc/wireguard/wgcf.conf
 
           sudo wg-quick up wgcf
 
-          # Verify handshake and failover across WARP anycast IPs/ports if Azure NAT is throttled
+          # Verify handshake using Cloudflare's IPv6 literal [2606:4700:4700::1111]
+          # Put port 500 and 4500 first as Azure NAT rarely throttles IPsec ports compared to 2408
           ENDPOINTS=(
-            "162.159.192.1:2408"
             "162.159.192.1:500"
+            "162.159.193.1:4500"
+            "162.159.192.1:2408"
             "162.159.192.1:1701"
             "162.159.193.1:2408"
-            "162.159.193.1:4500"
           )
 
           PEER_KEY=$(sudo wg show wgcf peers | head -n 1)
@@ -51,14 +53,18 @@ jobs:
 
           for EP in "${ENDPOINTS[@]}"; do
             echo "Testing WARP endpoint $EP..."
-            sudo wg set wgcf peer "$PEER_KEY" endpoint "$EP" persistent-keepalive 15
-            if curl -6 -fsS --connect-timeout 5 --max-time 10 "https://1.1.1.1/cdn-cgi/trace" >/dev/null 2>&1; then
+            # Randomize local listen-port (0) so Azure NAT allocates a fresh UDP flow
+            sudo wg set wgcf listen-port 0 peer "$PEER_KEY" endpoint "$EP" persistent-keepalive 15
+
+            # Use IPv6 literal [2606:4700:4700::1111] and allow 6s (WireGuard REKEY_TIMEOUT is 5s)
+            if curl -6 -fsS --connect-timeout 6 --max-time 8 "https://[2606:4700:4700::1111]/cdn-cgi/trace" >/dev/null; then
               echo "Successfully established IPv6 tunnel via $EP"
               sudo wg show wgcf
               CONNECTED=1
               break
             fi
-            echo "Endpoint $EP timed out, trying next..."
+            echo "Endpoint $EP failed, waiting 1s before next endpoint..."
+            sleep 1
           done
 
           if [ "$CONNECTED" -ne 1 ]; then
