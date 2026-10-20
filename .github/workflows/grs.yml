@@ -2,7 +2,7 @@ name: Update README cards
 
 on:
   schedule:
-    - cron: "0 0 * * *" # Runs once daily at midnight
+    - cron: "23 3 * * *" # Off-peak minute avoids GitHub Actions midnight UTC queue & NAT congestion
   workflow_dispatch:
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
       - name: Enable IPv6 via wgcf and WireGuard
         run: |
           sudo apt-get update
-          sudo apt-get install -y wireguard-tools dnsutils jq
+          sudo apt-get install -y wireguard-tools dnsutils jq iptables
 
           WGCF_URL=$(curl -s https://api.github.com/repos/ViRb3/wgcf/releases/latest \
             | jq -r '.assets[] | select(.name | test("linux_amd64$")) | .browser_download_url')
@@ -28,23 +28,58 @@ jobs:
           wgcf register --accept-tos
           wgcf generate
 
-          ENDPOINT_IP=$(dig +short engage.cloudflareclient.com A | head -n 1)
-          sed -i "s/engage.cloudflareclient.com/${ENDPOINT_IP}/g" wgcf-profile.conf
+          # Strip DNS and restrict AllowedIPs to IPv6 only
           sed -i '/^DNS =/d' wgcf-profile.conf
           sed -i 's/AllowedIPs = 0.0.0.0\/0, ::\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
           sed -i 's/AllowedIPs = 0.0.0.0\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
 
+          # Enable IPv6 and clamp TCP MSS to prevent PMTU blackholes
           sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
           sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
+          sudo ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o wgcf -j TCPMSS --clamp-mss-to-pmtu
+
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
           sudo wg-quick up wgcf
+
+          # Wait a moment for Cloudflare edge key propagation, then verify & rotate endpoints if blocked
+          sleep 3
+          ENDPOINTS=(
+            "162.159.192.1:2408"
+            "162.159.192.1:500"
+            "162.159.192.1:1701"
+            "162.159.193.1:2408"
+            "162.159.193.1:4500"
+          )
+
+          PEER_KEY=$(sudo wg show wgcf peers | head -n 1)
+          CONNECTED=0
+
+          for EP in "${ENDPOINTS[@]}"; do
+            echo "Testing WARP endpoint $EP..."
+            sudo wg set wgcf peer "$PEER_KEY" endpoint "$EP" persistent-keepalive 15
+            if curl -6 -fsS --connect-timeout 5 --max-time 10 "https://1.1.1.1/cdn-cgi/trace" >/dev/null 2>&1; then
+              echo "Successfully established IPv6 tunnel via $EP"
+              sudo wg show wgcf
+              CONNECTED=1
+              break
+            fi
+            echo "Endpoint $EP timed out, trying next..."
+          done
+
+          if [ "$CONNECTED" -ne 1 ]; then
+            echo "ERROR: All Cloudflare WARP endpoints failed handshake."
+            sudo wg show wgcf
+            exit 1
+          fi
 
       - name: Download SVG cards from git.jelius.dev
         run: |
           mkdir -p profile
-          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/overview.svg#gh-dark-mode-only" \
+          curl -6 -fsSL --connect-timeout 15 --retry 4 --retry-delay 3 --retry-all-errors \
+            "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/overview.svg#gh-dark-mode-only" \
             -o profile/stats.svg
-          curl -6 -fsSL "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/languages.svg#gh-dark-mode-only" \
+          curl -6 -fsSL --connect-timeout 15 --retry 4 --retry-delay 3 --retry-all-errors \
+            "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/languages.svg#gh-dark-mode-only" \
             -o profile/top-langs.svg
 
       - name: Commit cards
