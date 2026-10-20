@@ -2,7 +2,7 @@ name: Update README cards
 
 on:
   schedule:
-    - cron: "23 3 * * *" # Off-peak minute avoids GitHub Actions midnight UTC queue & NAT congestion
+    - cron: "23 3 * * *" # Off-peak schedule
   workflow_dispatch:
 
 jobs:
@@ -15,34 +15,29 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Enable IPv6 via wgcf and WireGuard
+      - name: Enable IPv6 via Static WARP Profile
+        env:
+          WGCF_CONF: ${{ secrets.WGCF_CONF }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y wireguard-tools dnsutils jq iptables
-
-          WGCF_URL=$(curl -s https://api.github.com/repos/ViRb3/wgcf/releases/latest \
-            | jq -r '.assets[] | select(.name | test("linux_amd64$")) | .browser_download_url')
-          sudo curl -fsSL "$WGCF_URL" -o /usr/local/bin/wgcf
-          sudo chmod +x /usr/local/bin/wgcf
-
-          wgcf register --accept-tos
-          wgcf generate
-
-          # Strip DNS and restrict AllowedIPs to IPv6 only
-          sed -i '/^DNS =/d' wgcf-profile.conf
-          sed -i 's/AllowedIPs = 0.0.0.0\/0, ::\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
-          sed -i 's/AllowedIPs = 0.0.0.0\/0/AllowedIPs = ::\/0/g' wgcf-profile.conf
+          sudo apt-get install -y wireguard-tools iptables
 
           # Enable IPv6 and clamp TCP MSS to prevent PMTU blackholes
           sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
           sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
           sudo ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o wgcf -j TCPMSS --clamp-mss-to-pmtu
 
-          sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
+          # Write the secret config (and apply defensive sed patches just in case)
+          sudo mkdir -p /etc/wireguard
+          echo "$WGCF_CONF" \
+            | sed '/^DNS =/d' \
+            | sed 's/AllowedIPs = 0.0.0.0\/0, ::\/0/AllowedIPs = ::\/0/g' \
+            | sudo tee /etc/wireguard/wgcf.conf > /dev/null
+          sudo chmod 600 /etc/wireguard/wgcf.conf
+
           sudo wg-quick up wgcf
 
-          # Wait a moment for Cloudflare edge key propagation, then verify & rotate endpoints if blocked
-          sleep 3
+          # Verify handshake and failover across WARP anycast IPs/ports if Azure NAT is throttled
           ENDPOINTS=(
             "162.159.192.1:2408"
             "162.159.192.1:500"
