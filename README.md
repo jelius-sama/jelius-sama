@@ -1,2 +1,3 @@
-![GitHub Stats](./profile/stats.svg#gh-dark-mode-only)
-![Top Langs](./profile/top-langs.svg#gh-dark-mode-only)
+![GitHub Stats](./profile/stats.svg)
+![Top Langs](./profile/top-langs.svg)
+![Heatmap](./profile/heatmap.svg)
