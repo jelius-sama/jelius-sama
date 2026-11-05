@@ -77,11 +77,14 @@ jobs:
         run: |
           mkdir -p profile
           curl -6 -fsSL --connect-timeout 15 --retry 4 --retry-delay 3 --retry-all-errors \
-            "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/overview.svg#gh-dark-mode-only" \
+            "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/g/o.svg" \
             -o profile/stats.svg
           curl -6 -fsSL --connect-timeout 15 --retry 4 --retry-delay 3 --retry-all-errors \
-            "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/generated/languages.svg#gh-dark-mode-only" \
+            "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/g/l.svg" \
             -o profile/top-langs.svg
+          curl -6 -fsSL --connect-timeout 15 --retry 4 --retry-delay 3 --retry-all-errors \
+            "https://git.jelius.dev/jelius-sama/jelius-sama/raw/branch/main/g/h.svg" \
+            -o profile/heatmap.svg
 
       - name: Commit cards
         run: |
